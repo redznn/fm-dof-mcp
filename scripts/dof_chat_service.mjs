@@ -57,6 +57,8 @@ const TOOL_LABELS = {
   shortlist: "updating the shortlist…",
   inbox: "going through the mail…",
 };
+// Platform flag first: agentEntry/AGENT_* below run at module load.
+const IS_WINDOWS = process.platform === "win32";
 // Windows: npm CLIs are .cmd shims — spawning them needs a shell, but a
 // shell mangles the quoted -c/JSON args (exit 2). Run their underlying
 // codex.js/claude.js with node directly instead: no shell, no quoting loss.
@@ -91,7 +93,6 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Negative-pid process-group kills are Unix-only; on Windows fall back to
 // taskkill /T (whole tree) and then the direct child handle.
-const IS_WINDOWS = process.platform === "win32";
 async function terminateProcessTree(child) {
   if (!child?.pid) return;
   if (IS_WINDOWS) {
