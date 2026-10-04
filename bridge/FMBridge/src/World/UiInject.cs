@@ -60,8 +60,15 @@ internal static class UiInject
     // Row texts unique to the Recruitment dropdown (captured live), used only
     // to disambiguate its "View" from any other dropdown/tooltip's "View"
     // that might also be parked (hidden) under the shared floating-element-root.
+    // English (default game language):
     private static readonly string[] RecruitmentMenuFingerprint =
         { "Player Recommendations", "Recruitment Focuses", "Recruitment Objectives" };
+    // Portuguese (same menu, PT game language — e.g. "Recomendações de
+    // Jogadores", "Focos de Recrutamento", "Objectivos do Recrutamento").
+    // A list matches when it hits >= 2 entries of EITHER set (see
+    // FindRecruitmentMenuList), so one language's rows never need the other's.
+    private static readonly string[] RecruitmentMenuFingerprintPT =
+        { "Recomendações de Jogadores", "Focos de Recrutamento", "Objectivos do Recrutamento" };
 
     // Native-look fallback, pixel-sampled from a live screenshot
     // (popup bg #20232F; native item glyph-core average RGB (204,193,243)) —
@@ -1366,8 +1373,9 @@ internal static class UiInject
     }
 
     /// <summary>Finds the "View" node under floating-element-root whose row
-    /// texts match at least two of RecruitmentMenuFingerprint. Depth/hit caps
-    /// keep this bounded even if the shared overlay layer is currently
+    /// texts match at least two of RecruitmentMenuFingerprint (English) or
+    /// at least two of RecruitmentMenuFingerprintPT (Portuguese). Depth/hit
+    /// caps keep this bounded even if the shared overlay layer is currently
     /// holding more than one dropdown's (mostly hidden, still-attached —
     /// see the persistence recon note above) item list at once.</summary>
     private static VisualElement FindRecruitmentMenuList(VisualElement floatingRoot)
@@ -1378,10 +1386,12 @@ internal static class UiInject
         {
             var hits = new List<string>();
             CollectTextsShallow(view, 0, hits);
-            int matches = 0;
+            int matchesEN = 0, matchesPT = 0;
             foreach (var f in RecruitmentMenuFingerprint)
-                if (hits.Contains(f)) matches++;
-            if (matches >= 2) return view;
+                if (hits.Contains(f)) matchesEN++;
+            foreach (var f in RecruitmentMenuFingerprintPT)
+                if (hits.Contains(f)) matchesPT++;
+            if (matchesEN >= 2 || matchesPT >= 2) return view;
         }
         return null;
     }
