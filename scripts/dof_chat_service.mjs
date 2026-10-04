@@ -15,7 +15,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,7 +57,25 @@ const TOOL_LABELS = {
   shortlist: "updating the shortlist…",
   inbox: "going through the mail…",
 };
-// MCP tool names arrive as mcp__<server>__<tool>; the last segment keys the map.
+// Windows: npm CLIs are .cmd shims — spawning them needs a shell, but a
+// shell mangles the quoted -c/JSON args (exit 2). Run their underlying
+// codex.js/claude.js with node directly instead: no shell, no quoting loss.
+function agentEntry(provider) {
+  if (process.platform !== "win32") return null;
+  const envKey = provider === "codex" ? "DOF_CODEX_JS" : "DOF_CLAUDE_JS";
+  if (process.env[envKey]) return process.env[envKey];
+  const base = join(homedir(), "AppData", "Roaming", "npm", "node_modules");
+  const probe = provider === "codex"
+    ? join(base, "@openai", "codex", "bin", "codex.js")
+    : join(base, "@anthropic-ai", "claude-code", "bin", "claude.js");
+  try { readFileSync(probe); return probe; } catch { return null; }
+}
+const AGENT_JS = agentEntry(PROVIDER);
+// [cmd, prefixArgs, useShell]: node-direct on Windows when the entry was
+// found, bare-name (+shell for .cmd) otherwise, unchanged Unix behavior.
+const AGENT_CMD = AGENT_JS ? process.execPath : (PROVIDER === "codex" ? "codex" : "claude");
+const AGENT_PREFIX = AGENT_JS ? [AGENT_JS] : [];
+const AGENT_SHELL = IS_WINDOWS && !AGENT_JS;
 const toolLabel = (name) => TOOL_LABELS[String(name).split("__").pop()] ?? "working on it…";
 
 // The chat's system prompt is fully self-contained: the canonical
@@ -227,7 +245,7 @@ function runCodex(userText, gen) {
     const args = sessionId
       ? ["exec", "resume", ...codexOptions, sessionId, userText]
       : ["exec", ...codexOptions, userText];
-    const child = spawn("codex", args, { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: IS_WINDOWS, windowsHide: true });
+    const child = spawn(AGENT_CMD, [...AGENT_PREFIX, ...args], { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: AGENT_SHELL, windowsHide: true });
     let buf = "", err = "";
     let timedOut = false, cancelled = false, stopping = false;
     const stop = async (reason) => {
@@ -358,7 +376,7 @@ function runClaude(userText, gen) {
       "--setting-sources", "",
     ];
     if (sessionId) args.push("--resume", sessionId);
-    const child = spawn("claude", args, { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: IS_WINDOWS, windowsHide: true });
+    const child = spawn(AGENT_CMD, [...AGENT_PREFIX, ...args], { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: AGENT_SHELL, windowsHide: true });
     let buf = "", err = "";
     let timedOut = false, cancelled = false, stopping = false;
     const stop = async (reason) => {
