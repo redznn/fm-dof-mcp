@@ -227,7 +227,7 @@ function runCodex(userText, gen) {
     const args = sessionId
       ? ["exec", "resume", ...codexOptions, sessionId, userText]
       : ["exec", ...codexOptions, userText];
-    const child = spawn("codex", args, { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const child = spawn("codex", args, { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: IS_WINDOWS });
     let buf = "", err = "";
     let timedOut = false, cancelled = false, stopping = false;
     const stop = async (reason) => {
@@ -358,7 +358,7 @@ function runClaude(userText, gen) {
       "--setting-sources", "",
     ];
     if (sessionId) args.push("--resume", sessionId);
-    const child = spawn("claude", args, { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const child = spawn("claude", args, { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true, shell: IS_WINDOWS });
     let buf = "", err = "";
     let timedOut = false, cancelled = false, stopping = false;
     const stop = async (reason) => {
