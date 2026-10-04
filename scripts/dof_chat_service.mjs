@@ -128,16 +128,24 @@ function connect() {
   ws.onopen = async () => {
     log("bridge connected");
     everConnected = true;
-    try {
-      await call({ method: "ui_inject", action: "overlay_add" });
-      // Arms the "Chat with DoF" row; the bridge attaches it whenever
-      // the Recruitment nav dropdown exists and re-attaches after
-      // screen changes, so once per connection is enough.
-      await call({ method: "ui_inject", action: "menu_add" });
-      log("overlay up, menu armed");
-    } catch (e) {
-      log("ui setup failed:", e.message);
+    // During game startup the bridge can take a while to answer (loading
+    // screens); retry each step instead of giving up after one timeout, or
+    // the overlay/menu never comes up for the whole session.
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      try {
+        await call({ method: "ui_inject", action: "overlay_add" }, 120_000);
+        // Arms the "Chat with DoF" row; the bridge attaches it whenever
+        // the Recruitment nav dropdown exists and re-attaches after
+        // screen changes, so once per connection is enough.
+        await call({ method: "ui_inject", action: "menu_add" }, 120_000);
+        log("overlay up, menu armed");
+        return;
+      } catch (e) {
+        log(`ui setup attempt ${attempt} failed:`, e.message);
+        await sleep(10_000);
+      }
     }
+    log("ui setup failed after retries — game UI may be unreachable this session");
   };
   ws.onmessage = (ev) => {
     let msg;
