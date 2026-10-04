@@ -12,7 +12,7 @@
 // Requires: FM26 running with a career loaded (bridge on ws://127.0.0.1:7777),
 // mcp/fm-dof-mcp built (npm run build), selected CLI on PATH and logged in.
 
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -71,8 +71,17 @@ const toolLabel = (name) => TOOL_LABELS[String(name).split("__").pop()] ?? "work
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Negative-pid process-group kills are Unix-only; on Windows fall back to
+// taskkill /T (whole tree) and then the direct child handle.
+const IS_WINDOWS = process.platform === "win32";
 async function terminateProcessTree(child) {
   if (!child?.pid) return;
+  if (IS_WINDOWS) {
+    try {
+      execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    } catch { try { child.kill("SIGKILL"); } catch {} }
+    return;
+  }
   try { process.kill(-child.pid, "SIGTERM"); } catch { try { child.kill("SIGTERM"); } catch {} }
   await sleep(250);
   // Escalate the process group even if the direct CLI parent has already
