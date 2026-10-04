@@ -49,18 +49,32 @@ internal static class ChatServiceLauncher
                 return;
             }
 
-            // Route through /bin/sh purely for the output redirect; exec
+            // Unix: route through /bin/sh purely for the output redirect; exec
             // replaces the shell so the tracked pid is node itself. Paths
             // travel as environment variables to sidestep quoting.
+            // Windows: no /bin/sh — start node.exe directly and mirror its
+            // stdout/stderr into the log file from managed code instead.
             var logFile = Path.Combine(dir, "chat_service.log");
             var psi = new ProcessStartInfo
             {
-                FileName = "/bin/sh",
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            psi.ArgumentList.Add("-c");
-            psi.ArgumentList.Add("exec \"$DOF_NODE\" \"$DOF_SCRIPT\" > \"$DOF_LOG\" 2>&1");
+            var isWindows = System.Runtime.InteropServices.RuntimeInformation
+                .IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+            if (isWindows)
+            {
+                psi.FileName = node;
+                psi.ArgumentList.Add(script);
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+            }
+            else
+            {
+                psi.FileName = "/bin/sh";
+                psi.ArgumentList.Add("-c");
+                psi.ArgumentList.Add("exec \"$DOF_NODE\" \"$DOF_SCRIPT\" > \"$DOF_LOG\" 2>&1");
+            }
             psi.Environment["DOF_NODE"] = node;
             psi.Environment["DOF_SCRIPT"] = script;
             psi.Environment["DOF_LOG"] = logFile;
@@ -74,6 +88,13 @@ internal static class ChatServiceLauncher
             if (!string.IsNullOrEmpty(model)) psi.Environment["DOF_CHAT_MODEL"] = model;
 
             _proc = Process.Start(psi);
+            if (isWindows && _proc != null)
+            {
+                // Drain the redirected streams into the log file; without a
+                // reader node.exe would block once its output buffers fill.
+                var proc = _proc;
+                System.Threading.Tasks.Task.Run(() => PumpStream(proc, logFile));
+            }
             log.LogInfo($"[Bridge] chat service started (pid {_proc?.Id}), log: {logFile}");
         }
         catch (Exception e)
@@ -91,5 +112,25 @@ internal static class ChatServiceLauncher
         }
         catch { }
         _proc = null;
+    }
+
+    // Windows only: appends both redirected streams of the node service to
+    // the log file until the process exits.
+    private static void PumpStream(System.Diagnostics.Process proc, string logFile)
+    {
+        try
+        {
+            using (var writer = new System.IO.StreamWriter(logFile, append: true))
+            {
+                writer.AutoFlush = true;
+                string line;
+                while ((line = proc.StandardOutput.ReadLine()) != null)
+                    writer.WriteLine(line);
+                string err;
+                while ((err = proc.StandardError.ReadLine()) != null)
+                    writer.WriteLine(err);
+            }
+        }
+        catch { }
     }
 }
